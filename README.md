@@ -1,25 +1,9 @@
-# [Official] Understanding Cross-Domain Few-Shot Learning Based on Domain Similarity and Few-shot Difficulty
+# CLIP-based Cross-Domain Few-Shot Learning
 
-This repo contains the implementation of our [paper](https://arxiv.org/abs/2202.01339) accepted at NeurIPS 2022.
+This project is built upon understanding-cdfsl.
 
-## Abstract
-Cross-domain few-shot learning (CD-FSL) has drawn increasing attention for handling large differences between the source and target domains--an important concern in real-world scenarios. To overcome these large differences, recent works have considered exploiting small-scale unlabeled data from the target domain during the pre-training stage. This data enables self-supervised pre-training on the target domain, in addition to supervised pre-training on the source domain. In this paper, we empirically investigate which pre-training is preferred based on domain similarity and few-shot difficulty of the target domain. We discover that the performance gain of self-supervised pre-training over supervised pre-training becomes large when the target domain is dissimilar to the source domain, or the target domain itself has low few-shot difficulty. We further design two pre-training schemes, mixed-supervised and two-stage learning, that improve performance. In this light, we present six findings for CD-FSL, which are supported by extensive experiments and analyses on three source and eight target benchmark datasets with varying levels of domain similarity and few-shot difficulty.
-
-## Table of Contents
-
-* [Prerequisites](#prerequisites)
-* [Data Preparation](#data-preparation)
-  * [BSCD-FSL](#bscd-fsl)
-  * [Cars](#cars)
-  * [CUB](#cub (caltech-ucsd birds-200-2011))
-  * [Places](#places)
-  * [Plantae](#plantae)
-* [Usage](#usage)
-* [Model Checkpoints](#model-checkpoints)
-* [Attribution](#attribution)
-* [License](#license)
-* [Citation](#citation)
-* [Contact](#contact)
+Goal:
+A clean benchmark framework for CLIP-based CDFSL evaluation.
 
 ## Prerequisites
 
