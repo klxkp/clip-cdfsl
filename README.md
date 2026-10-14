@@ -1,4 +1,4 @@
-# [Official] Understanding Cross-Domain Few-Shot Learning Based on Domain Similarity and Few-shot Difficulty
+# [Official] Understanding Cross-Domain Few-Shot Learning Based on Domain Similarity and Few-shot Difficulty.
 
 This repo contains the implementation of our [paper](https://arxiv.org/abs/2202.01339) accepted at NeurIPS 2022.
 
@@ -188,7 +188,7 @@ Below, we provide the licenses, attribution, citations, and URL of the datasets 
 
 ## License
 
-Distributed under the MIT License.
+Distributed under the MIT License. 
 
 ## Citation
 
