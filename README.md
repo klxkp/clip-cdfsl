@@ -1,193 +1,232 @@
-# CLIP-based Cross-Domain Few-Shot Learning
+# CLIP-CDFSL
 
-This project is built upon understanding-cdfsl.
+A reproducible **frozen CLIP image-feature baseline** for episodic cross-domain few-shot classification on four target-domain datasets: **CropDisease, EuroSAT, ISIC, and ChestX**.
 
-Goal:
-A clean benchmark framework for CLIP-based CDFSL evaluation.
+This repository is based on [Understanding Cross-Domain Few-Shot Learning Based on Domain Similarity and Few-Shot Difficulty](https://github.com/sungnyun/understanding-cdfsl) (NeurIPS 2022). The current CLIP evaluation entry point is `1eval_clip.py`.
 
-## Prerequisites
+## Overview
 
-Our code works on `torch>=1.8`. Install the required Python packages via
+The implemented baseline uses a pretrained OpenAI CLIP model as a **frozen visual feature extractor** and evaluates a cosine-prototype classifier within each few-shot episode.
 
-```sh
-pip install -r requirements.txt
+- **Backbone:** pretrained OpenAI CLIP (ViT-B/32 in the reported run)
+- **Target datasets:** CropDisease, EuroSAT, ISIC, ChestX
+- **Evaluation:** N-way K-shot episodes; 5-way 1-shot and 5-way 5-shot by default
+- **Classifier:** normalized support-set class prototypes with cosine-similarity prediction
+- **Adaptation:** no gradient updates, fine-tuning, or task-specific training
+- **Text encoder:** not used by the current baseline
+- **Data protocol:** original `split_seed_1` metadata; episodes sampled from `labeled_80`
+- **Execution:** local CLIP source and checkpoint; no model download during evaluation
+
+**Scope:** This is a CLIP-based baseline evaluated under a cross-domain few-shot task setting, **not** a trained CLIP vision-language adaptation method. The current script does not implement zero-shot text-prompt classification, CoOp, Tip-Adapter, LoRA, or a new cross-domain adaptation algorithm. It does not retrain CLIP on ImageNet or miniImageNet.
+
+## Evaluation Method
+
+For a target-domain episode, `1eval_clip.py`:
+
+1. Samples `N` classes with `K` labeled support images and `Q` query images per class.
+2. Extracts L2-normalized image features with the frozen CLIP image encoder.
+3. Averages the support features of each class and L2-normalizes the resulting class prototype.
+4. Classifies each query by its cosine similarity to the class prototypes.
+5. Repeats across episodes and reports mean accuracy with a 95% confidence interval.
+
+For class `c` and query image `x`, the decision rule is:
+
+```text
+z(x) = normalize(CLIP_image_encoder(x))
+p(c) = normalize(mean(z(s) for s in support_images_of_class_c))
+prediction(x) = argmax_c dot(z(x), p(c))
 ```
 
-## Data Preparation
+The support labels define the episode classes; **no class-name text prompts are passed to CLIP**.
 
-Prepare and place all dataset folders in `/data/cdfsl/`. You may specify custom locations in `configs.py`.
+## Repository Components
 
-### BSCD-FSL
-
-Refer to the original BSCD-FSL [repository](https://github.com/IBM/cdfsl-benchmark).
-
-The dataset folders should be organized in `/data/cdfsl/` as follows:
-
-```
-CropDiseases/train
-├── Apple___Apple_scab
-│  ├── 00075aa8-d81a-4184-8541-b692b78d398a___FREC_Scab 3335.JPG
-│  ├── 0208f4eb-45a4-4399-904e-989ac2c6257c___FREC_Scab 3037.JPG
-
-EuroSAT
-├── AnnualCrop
-│  ├── AnnualCrop_1.jpg
-│  ├── AnnualCrop_2.jpg
-
-ISIC
-├── ATTRIBUTION.txt
-├── ISIC2018_Task3_Training_GroundTruth.csv
-├── ISIC2018_Task3_Training_LesionGroupings.csv
-├── ISIC_0024306.jpg
-├── ISIC_0024307.jpg
-
-chestX/images
-├── 00000001_000.png
-├── 00000001_001.png
+```text
+clip-cdfsl/
+├── 1eval_clip.py           # Frozen CLIP episodic evaluation
+├── configs.py              # Dataset root paths
+├── datasets/
+│   ├── datasets.py         # Dataset loaders
+│   ├── sampler.py          # Support/query episode sampling
+│   ├── split.py            # Original labeled/unlabeled split handling
+│   └── split_seed_1/       # Expected split CSV metadata
+├── requirements.txt
+├── LICENSE
+└── README.md
 ```
 
-Note: `chestX/images/` should contain **all** images from the ChestX dataset (the dataset archive provided online will
-typically split these images across multiple folders).
+Additional files inherited from the upstream CDFSL repository may be present. The CLIP results below are produced by `1eval_clip.py`, not the upstream ResNet training pipeline.
 
-### Cars
+## Requirements
 
-https://ai.stanford.edu/~jkrause/cars/car_dataset.html
+- Python and a compatible PyTorch / torchvision environment
+- Dependencies required by this repository and the local OpenAI CLIP package
+- An available CUDA GPU (recommended) or CPU
+- Local [OpenAI CLIP](https://github.com/openai/CLIP) source code and a compatible pretrained checkpoint
+- Prepared target datasets and matching split CSV files
 
-We use all images from both training and test sets for CD-FSL experiments.
-For convenience, we pre-process the data such that each image goes into its respective class folder.
+The repository's `requirements.txt` comes from the upstream project. Use a compatible, validated environment rather than assuming its pinned versions match every CUDA/Python installation.
 
-1. Download [`car_ims.tgz`](http://ai.stanford.edu/~jkrause/car196/car_ims.tgz) (the tar of all images) and [`cars_annos.mat`](http://ai.stanford.edu/~jkrause/car196/cars_annos.mat) (all bounding boxes and labels for both training and test).
-2. Copy `cars_annos.mat` and unzip `car_ims.tgz` into `./data_preparation/input/`. The directory should contain the following:
-```
-data_preparation/input
-├── cars_annos.mat
-├── car_ims
-│  ├── 000001.jpg
-│  ├── 000002.jpg
-```
-3. Run `./data_preparation/cars.py`, to generate the cars dataset folder at `./data_preparation/output/cars_cdfsl/`.
-4. Move the `cars_cdfsl` directory to `/data/cdfsl/`. You may specify a custom location in `configs.py`.
+The evaluation script expects:
 
-### <a name="cub"></a> CUB (Caltech-UCSD Birds-200-2011)
-
-http://www.vision.caltech.edu/datasets/cub_200_2011/
-
-We use all images for CD-FSL experiments.
-
-1. Download [`CUB_200_2011.tgz`](https://data.caltech.edu/records/20098).
-2. Unzip the archive and copy the *enclosed* `CUB_200_2011/` folder to `/data/cdfsl/`. You may specify a custom location in `configs.py`. The directory should contain the following:
-```
-CUB_200_2011/
-├── attributes/
-├── bounding_boxes.txt
-├── classes.txt
-├── image_class_labels.txt
-├── images/
-├── images.txt
-├── parts/
-├── README
-└── train_test_split.txt
+```text
+/y-stu01/clip_test/
+├── clip/
+│   └── __init__.py
+└── models/
+    └── ViT-B-32.pt
 ```
 
-### <a name="places"></a> Places (Places 205)
+These are example paths from the reported server run. The script accepts the actual paths through `--clip-repo` and `--checkpoint`.
 
-http://places.csail.mit.edu/user/
+## Dataset Preparation
 
-Due to the size of the original dataset, we only use a subset of the training set for CD-FSL experiments.
-We use 27,440 images from 16 classes. Please refer to the paper for details or refer to the subset sampling code at
-`data_prepratation/places_plantae_subset_sampler.ipynb`.
+Configure the dataset roots in `configs.py`. The current CLIP evaluator supports the following four target domains:
 
-1. Download [places365standard_easyformat.tar](http://data.csail.mit.edu/places/places365/places365standard_easyformat.tar).
-2. Unzip the archive into `./data_preparation/input/`. The directory should contain the following:
+| Dataset | Content | Expected data root (default configuration) |
+| --- | --- | --- |
+| CropDisease | Plant disease photographs | `/data/cdfsl/CropDiseases` (images under `dataset/train/`) |
+| EuroSAT | Satellite land-cover images | `/data/cdfsl/EuroSAT` |
+| ISIC | Dermoscopic skin-lesion images | `/data/cdfsl/ISIC` |
+| ChestX | Chest X-ray images | `/data/cdfsl/chestX` (images under `images/`) |
+
+ISIC also requires `ISIC2018_Task3_Training_GroundTruth.csv` in its data root. ChestX requires `Data_Entry_2017.csv` in its data root. See the upstream [CDFSL repository](https://github.com/sungnyun/understanding-cdfsl) and [BSCD-FSL benchmark](https://github.com/IBM/cdfsl-benchmark) for the original data sources and preparation conventions.
+
+The evaluator uses the existing split metadata in:
+
+```text
+datasets/split_seed_1/
+├── CropDisease_labeled_80.csv
+├── CropDisease_unlabeled_20.csv
+├── EuroSAT_labeled_80.csv
+├── EuroSAT_unlabeled_20.csv
+├── ISIC_labeled_80.csv
+├── ISIC_unlabeled_20.csv
+├── ChestX_labeled_80.csv
+└── ChestX_unlabeled_20.csv
 ```
-data_preparation/input/
-├── places365_standard/
-│  ├── train/
-│  │  ├── airfield/
-│  │  ├── airplane_cabin/
-│  │  ├── aiport_terminal/
+
+**Only `labeled_80` images are eligible for support/query sampling.** The `unlabeled_20` files are checked for split consistency, but those images are not used to train or adapt the model. The evaluator checks that the stored split metadata matches the prepared dataset files.
+
+## Run Evaluation
+
+From the repository root, run:
+
+```bash
+python 1eval_clip.py \
+  --clip-repo /y-stu01/clip_test \
+  --checkpoint /y-stu01/clip_test/models/ViT-B-32.pt \
+  --datasets CropDisease EuroSAT ISIC ChestX \
+  --shots 1 5 \
+  --way 5 \
+  --query 15 \
+  --episodes 600 \
+  --batch-size 128 \
+  --workers 4
 ```
-3. Run `./data_preparation/places.py` to generate the places dataset folder at `./data_preparation/outuput/places_cdfsl/`.
-4. Move the `places_cdfsl` directory to `/data/cdfsl/`. You may specify a custom location in `configs.py`.
 
-### <a name="plantae"></a> Plantae (from iNaturalist 2018)
+The command evaluates each of the four target domains in both 5-way 1-shot and 5-way 5-shot settings. Each setting uses **600 episodes** and **15 query images per class**. By default, `--seed=0`, `--episode-seed=0`, `--device=cuda`, and `--precision=fp32`.
 
-https://github.com/visipedia/inat_comp/tree/master/2018#Data
+### Repeat With Different Episode Seeds
 
-Due to the size of the original dataset, we only use a subset of the training set (of the Plantae super category) for CD-FSL experiments.
-We use 26,650 images from 69 classes. Please refer to the paper for details or refer to the subset sampling code at
-`data_prepratation/places_plantae_subset_sampler.ipynb`
+To run the same evaluation three times while keeping the original dataset split unchanged:
 
-1. Download [`train_val2018.tar.gz`](https://ml-inat-competition-datasets.s3.amazonaws.com/2018/train_val2018.tar.gz) (~120GB).
-2. Unzip the archive and copy the enclosed `Plantae/` folder (~43GB) to `./data_preparation/input/`. The directory should contain the following:
+```bash
+for s in 0 1 2; do
+  python 1eval_clip.py \
+    --clip-repo /y-stu01/clip_test \
+    --checkpoint /y-stu01/clip_test/models/ViT-B-32.pt \
+    --datasets CropDisease EuroSAT ISIC ChestX \
+    --shots 1 5 \
+    --way 5 \
+    --query 15 \
+    --episodes 600 \
+    --batch-size 128 \
+    --workers 4 \
+    --seed "$s" \
+    --episode-seed "$s"
+done
 ```
-data_preparation/input
-└── Plantae/
-   ├── 5221/
-   ├── 5222/
-   ├── 5223/
+
+Here, `--episode-seed` controls episodic class/image sampling, whereas `--seed` controls Python, NumPy, PyTorch, and data-loader randomness. The dataset partition remains the original `split_seed_1` in all three runs. Each run creates a separate output directory.
+
+For the full list of options:
+
+```bash
+python 1eval_clip.py --help
 ```
-3. Run `./data_preparation/plantae.py` to generate the plantae dataset folder at `./data_preparation/outuput/plantae_cdfsl`.
-4. Move the `plantae_cdfsl` directory to `/data/cdfsl/`. You may specify a custom location in `configs.py`.
 
-## Usage
+## Baseline Results
 
-The main training scripts are `pretrain.py` and `finetune.py`. Refer to `pretrain.sh` and `finetune.sh` on example
-usages for the main results in our paper, e.g., SL, SSL, MSL, two-stage SSL and two-stage MSL.
-To see all CLI arguments, refer to `io_utils.py`.
+Results from **one completed server run**, using **OpenAI CLIP ViT-B/32**, the original `split_seed_1` / `labeled_80` partition, and the default evaluation seeds (`--seed=0`, `--episode-seed=0`):
 
-## Model Checkpoints
+| Target dataset | 5-way 1-shot | 5-way 5-shot |
+| --- | ---: | ---: |
+| CropDisease | 72.22 ± 0.91 | 90.66 ± 0.52 |
+| EuroSAT | 60.83 ± 0.90 | 78.44 ± 0.57 |
+| ISIC | 28.74 ± 0.50 | 38.82 ± 0.57 |
+| ChestX | 21.15 ± 0.35 | 22.75 ± 0.41 |
 
-| Backbone  | Pretraining  | Augmentation | Model Checkpoints |
-| :-------- | :------------: |:---------: |:--------------:|
-| ResNet10  | miniImageNet (SL) | default (strong) | [google drive](https://drive.google.com/file/d/1J4weUMgMhdjYe0sbPBNavaf5D7aRkAog/view?usp=sharing) |
-| ResNet10  | miniImageNet (SL) | base | [google drive](https://drive.google.com/file/d/11HSAg85vlS67sVsEgd-RYgksnlX61WOj/view?usp=sharing) |
-| ResNet18  | tieredImageNet (SL) | default (strong) | [google drive](https://drive.google.com/file/d/1hRbE5VwDvgsKV6E7okOgqJaNOVsSfitP/view?usp=share_link) |
-| ResNet18  | tieredImageNet (SL) | base | [google drive](https://drive.google.com/file/d/1-UOzOG-NkqRFXng-Zu3RAbuMhZJZfEhN/view?usp=share_link) |
-| ResNet18  | ImageNet (SL) | base | [torchvision](https://pytorch.org/vision/stable/models.html) |
+All values are **accuracy (%) ± 95% confidence-interval half-width** over 600 episodes per setting, not the standard deviation across three runs. The confidence interval is computed as:
 
-## Attribution
+```text
+95% CI half-width = 1.96 × sample_std(episode_accuracy) / sqrt(num_episodes)
+```
 
-Below, we provide the licenses, attribution, citations, and URL of the datasets considered in our paper (if applicable).
+For a 5-way task, chance accuracy is 20%. These results describe this specific frozen-feature baseline and evaluation protocol; direct comparisons with published methods require matching their evaluation settings.
 
-- **ImageNet** is available at https://image-net.org/. miniImageNet and tieredImageNet are subsets of ImageNet.
-  1. *Deng, Jia, Wei Dong, Richard Socher, Li-Jia Li, Kai Li, and Li Fei-Fei. "Imagenet: A large-scale hierarchical image database." In 2009 IEEE conference on computer vision and pattern recognition, pp. 248-255. Ieee, 2009.*
-- **CropDisease** refers to the Plant Disease dataset on Kaggle, licensed under  GPL 2. It is available at https://www.kaggle.com/saroz014/plant-disease/.
-- **EuroSAT** is available at https://github.com/phelber/eurosat.
-  1. *Helber, Patrick, Benjamin Bischke, Andreas Dengel, and Damian Borth. "Eurosat: A novel dataset and deep learning benchmark for land use and land cover classification." IEEE Journal of Selected Topics in Applied Earth Observations and Remote Sensing 12, no. 7 (2019): 2217-2226.*
-  2. *Helber, Patrick, Benjamin Bischke, Andreas Dengel, and Damian Borth. "Introducing eurosat: A novel dataset and deep learning benchmark for land use and land cover classification." In IGARSS 2018-2018 IEEE international geoscience and remote sensing symposium, pp. 204-207. IEEE, 2018.*
-- **ISIC** refers to the ISIC 2018 Challenge Task 3 dataset. It is available at https://challenge.isic-archive.com.
-  1. *Codella, Noel, Veronica Rotemberg, Philipp Tschandl, M. Emre Celebi, Stephen Dusza, David Gutman, Brian Helba et al. "Skin lesion analysis toward melanoma detection 2018: A challenge hosted by the international skin imaging collaboration (isic)." arXiv preprint arXiv:1902.03368 (2019).*
-  2. *Tschandl, Philipp, Cliff Rosendahl, and Harald Kittler. "The HAM10000 dataset, a large collection of multi-source dermatoscopic images of common pigmented skin lesions." Scientific data 5, no. 1 (2018): 1-9.*
-- **ChestX** refers to the Chest-Xray8 provided by the NIH Clinical Center. The dataset is available at https://nihcc.app.box.com/v/ChestXray-NIHCC.
-  1. *Wang, Xiaosong, Yifan Peng, Le Lu, Zhiyong Lu, Mohammadhadi Bagheri, and Ronald M. Summers. "Chestx-ray8: Hospital-scale chest x-ray database and benchmarks on weakly-supervised classification and localization of common thorax diseases." In Proceedings of the IEEE conference on computer vision and pattern recognition, pp. 2097-2106. 2017.*
-- **Places** is licensed under CC BY. It is available at http://places.csail.mit.edu/user.
-  1. *Zhou, Bolei, Agata Lapedriza, Aditya Khosla, Aude Oliva, and Antonio Torralba. "Places: A 10 million image database for scene recognition." IEEE transactions on pattern analysis and machine intelligence 40, no. 6 (2017): 1452-1464.*
-- **Plantae** refers to the Plantae super category of the iNaturalist 2018 dataset. It is available at https://github.com/visipedia/inat_comp/tree/master/2017.
-  1. *Van Horn, Grant, Oisin Mac Aodha, Yang Song, Yin Cui, Chen Sun, Alex Shepard, Hartwig Adam, Pietro Perona, and Serge Belongie. "The inaturalist species classification and detection dataset." In Proceedings of the IEEE conference on computer vision and pattern recognition, pp. 8769-8778. 2018.*
-- **CUB** refers to the Caltech-UCSD Birds-200-2011 dataset, licensed under CC0 (public domain). It is available at https://www.kaggle.com/datasets/veeralakrishna/200-bird-species-with-11788-images.
-  1. *Wah, Catherine, Steve Branson, Peter Welinder, Pietro Perona, and Serge Belongie. "The caltech-ucsd birds-200-2011 dataset." (2011).*
-- **Cars** is available at https://ai.stanford.edu/~jkrause/cars/car_dataset.html.
-  1. *Krause, Jonathan, Michael Stark, Jia Deng, and Li Fei-Fei. "3d object representations for fine-grained categorization." In Proceedings of the IEEE international conference on computer vision workshops, pp. 554-561. 2013.*
+## Outputs and Reproducibility
+
+By default, each run writes to a new timestamped directory:
+
+```text
+logs/clip/ViT-B-32_<UTC_timestamp>/
+├── run.json
+├── summary.csv
+├── CropDisease_samples.csv
+├── CropDisease_1shot_indices.npz
+├── CropDisease_1shot_episodes.csv
+├── CropDisease_5shot_indices.npz
+├── CropDisease_5shot_episodes.csv
+└── ...                         # Equivalent outputs for the other datasets
+```
+
+- `summary.csv`: per-dataset, per-shot mean accuracy, episode standard deviation, 95% CI, and overlap count.
+- `*_episodes.csv`: per-episode correctness and accuracy.
+- `*_indices.npz`: sampled support/query indices and selected class IDs.
+- `*_samples.csv`: sample-index to image-path/label mapping.
+- `run.json`: arguments, environment information, checkpoint and source-file hashes, dataset metadata, and completion status.
+
+The script checks for overlapping support/query indices within each episode. The default output directory is never overwritten; a custom fresh directory can be specified with `--output`.
+
+## Project Scope
+
+This branch currently provides a **visual-only frozen CLIP baseline** for few-shot classification across target domains. It does **not** use CLIP's text encoder or optimize prompts, adapters, or LoRA parameters. Support images are used to construct class prototypes, not to update the model.
+
+The code can serve as a common evaluation starting point for future CLIP-based few-shot and cross-domain few-shot experiments. Any future methods and their results should be documented separately from this baseline.
+
+## Acknowledgments and Citation
+
+This repository is derived from the official NeurIPS 2022 implementation of:
+
+> Jaehoon Oh, Sungnyun Kim, Namgyu Ho, Jin-Hwa Kim, Hwanjun Song, and Se-Young Yun. **Understanding Cross-Domain Few-Shot Learning Based on Domain Similarity and Few-Shot Difficulty.** NeurIPS, 2022.
+
+Original repository: https://github.com/sungnyun/understanding-cdfsl
+
+The evaluation uses the pretrained CLIP model introduced in:
+
+> Alec Radford et al. **Learning Transferable Visual Models From Natural Language Supervision.** ICML, 2021.
+
+CLIP implementation: https://github.com/openai/CLIP
+
+The four target domains follow the data ecosystem introduced by:
+
+> Yunhui Guo et al. **A Broader Study of Cross-Domain Few-Shot Learning.** ECCV, 2020.
+
+BSCD-FSL benchmark: https://github.com/IBM/cdfsl-benchmark
+
+Dataset ownership, licenses, and usage conditions remain with their respective providers. Refer to the upstream repository for dataset attributions.
 
 ## License
 
-Distributed under the MIT License.
-
-## Citation
-
-If you find this repo useful for your research, please consider citing our paper:
-
-```
-@inproceedings{oh2022understanding,
-  title={Understanding Cross-Domain Few-Shot Learning Based on Domain Similarity and Few-Shot Difficulty},
-  author={Oh, Jaehoon and Kim, Sungnyun and Ho, Namgyu and Kim, Jin-Hwa and Song, Hwanjun and Yun, Se-Young},
-  booktitle={Advances in Neural Information Processing Systems},
-  year={2022}
-}
-```
-
-## Contact
-* Jaehoon Oh: jhoon.oh@kaist.ac.kr
-* Sungnyun Kim: ksn4397@kaist.ac.kr
-* Namgyu Ho: itsnamgyu@kaist.ac.kr
+This repository retains the original MIT license. See [LICENSE](LICENSE) for details.
